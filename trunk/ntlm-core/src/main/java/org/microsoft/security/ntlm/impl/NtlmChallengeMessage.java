@@ -95,6 +95,10 @@ interpret messages with Version fields.
         }
     }
 
+    public byte[] getMessageData() {
+        return messageData;
+    }
+
     public ByteArray getServerChallenge() {
         return serverChallenge;
     }
