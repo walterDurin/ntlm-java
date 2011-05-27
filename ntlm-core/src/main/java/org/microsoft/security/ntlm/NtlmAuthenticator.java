@@ -4,9 +4,7 @@
 package org.microsoft.security.ntlm;
 
 import org.microsoft.security.ntlm.impl.Algorithms;
-import org.microsoft.security.ntlm.impl.NtlmV1Routines;
 import org.microsoft.security.ntlm.impl.NtlmV1Session;
-import org.microsoft.security.ntlm.impl.NtlmV2Routines;
 import org.microsoft.security.ntlm.impl.NtlmV2Session;
 
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_128_FLAG;
@@ -222,7 +220,7 @@ Windows 2000, Windows XP, Windows Server 2003, Windows Vista, and Windows Server
 //    private int clientConfigFlags;
 
     private byte[] ntowf;
-    private byte[] lmowfv1;
+    private byte[] lmowf;
 
     public NtlmAuthenticator(NtlmVersion ntlmVersion, ConnectionType connectionType, String hostname, String domain, String username, String password) {
         this.ntlmVersion = ntlmVersion;
@@ -232,10 +230,10 @@ Windows 2000, Windows XP, Windows Server 2003, Windows Vista, and Windows Server
         this.username = username;
 
         if (ntlmVersion == NtlmVersion.ntlmv2) {
-            ntowf = NtlmV2Routines.calculateNTOWFv2(domain, username, password);
+            ntowf = NtlmV2Session.calculateNTOWFv2(domain, username, password);
         } else {
-            ntowf = NtlmV1Routines.calculateNTLMOWFv1(domain, username, password);
-            lmowfv1 = NtlmV1Routines.calculateLMOWFv1(domain, username, password);
+            ntowf = NtlmV1Session.calculateNTOWFv1(domain, username, password);
+            lmowf = NtlmV1Session.calculateLMOWFv1(domain, username, password);
         }
 
 //        clientConfigFlags = connectionOriented ? NEGOTIATE_FLAGS_CONN : NEGOTIATE_FLAGS_CONNLESS;
@@ -245,7 +243,7 @@ Windows 2000, Windows XP, Windows Server 2003, Windows Vista, and Windows Server
     public NtlmSession createSession() {
         switch (ntlmVersion) {
             case ntlmv1:
-                return new NtlmV1Session(connectionType, ntowf, lmowfv1, hostname);
+                return new NtlmV1Session(connectionType, ntowf, lmowf, hostname, domain, username);
 
             case ntlmv2:
                 return new NtlmV2Session(connectionType, ntowf, hostname, domain, username);
@@ -259,6 +257,10 @@ Windows 2000, Windows XP, Windows Server 2003, Windows Vista, and Windows Server
         connectionOriented, connectionless
     }
 
+    /**
+     * How NTLM version is detected: http://davenport.sourceforge.net/ntlm.html#ntlmVersion2
+     * Also NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY flag is used to negotiate
+     */
     public enum NtlmVersion {
         ntlmv1, ntlmv2
     }

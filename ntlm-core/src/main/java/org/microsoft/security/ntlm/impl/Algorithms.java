@@ -5,11 +5,17 @@ package org.microsoft.security.ntlm.impl;
 
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.DESKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.security.Key;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.zip.CRC32;
+import java.util.zip.Checksum;
 
 /**
  * @author <a href="http://profiles.google.com/109977706462274286343">Veritatem Quaeres</a>
@@ -19,6 +25,7 @@ public class Algorithms {
 
     public static final Charset UNICODE_ENCODING = Charset.forName("UnicodeLittleUnmarked");
     public static final Charset ASCII_ENCODING = Charset.forName("US-ASCII");
+    public static final byte[] EMPTY_ARRAY = new byte[4];
 
     private static final String SHA1_NAME = "SHA-1";
     private static final String HMAC_MD5_NAME = "HmacMD5";
@@ -261,6 +268,15 @@ public class Algorithms {
         }
     }
 
+    public static Cipher createDES() {
+        try {
+            Cipher des = Cipher.getInstance("DES/ECB/NoPadding");
+            return des;
+        } catch (Exception e) {
+            throw new RuntimeException("Internal error", e);
+        }
+    }
+
     public static byte[] calculateMD4(byte[] data) {
         MessageDigest md4 = createMD4();
         md4.update(data);
@@ -286,6 +302,19 @@ public class Algorithms {
     }
 
 
+    /**
+     * 6 Appendix A: Cryptographic Operations Reference
+RC4K(K,D)
+Indicates the encryption of data item D with the key K
+using the RC4 algorithm.
+Note The key sizes for RC4 encryption in NTLM are
+defined in sections KXKEY, SIGNKEY, and SEALKEY, where
+they are created.
+
+     * @param key
+     * @param data
+     * @return
+     */
     public static byte[] calculateRC4K(byte[] key, byte[] data) {
         try {
             Cipher rc4 = createRC4(key);
@@ -303,6 +332,109 @@ public class Algorithms {
     }
 
     /**
+     * 6 Appendix A: Cryptographic Operations Reference
+     *
+     * DES(K, D) Indicates the encryption of an 8-byte data item D with the
+          7-byte key K using the Data Encryption Standard (DES)
+          algorithm in Electronic Codebook (ECB) mode. The result is
+          8 bytes in length ([FIPS46-2]).
+     *
+     *
+     *
+     * @param keyData A byte array containing the DES key material.
+     * @param data data
+     *
+     * @return A DES encryption key created from the key material
+     * starting at the specified offset in the given byte array.
+     */
+    public static byte[] calculateDES(ByteArray keyData, ByteArray data) {
+        try {
+            // Creates a DES encryption key from the given 7-byte key material.
+            byte[] keyBytes = new byte[7];
+            if (keyData.getLength() > 0) {
+                System.arraycopy(keyData.getData(), keyData.getOffset(), keyBytes, 0, keyData.getLength());
+            }
+            byte[] material = new byte[8];
+            material[0] = keyBytes[0];
+            material[1] = (byte) (keyBytes[0] << 7 | (keyBytes[1] & 0xff) >>> 1);
+            material[2] = (byte) (keyBytes[1] << 6 | (keyBytes[2] & 0xff) >>> 2);
+            material[3] = (byte) (keyBytes[2] << 5 | (keyBytes[3] & 0xff) >>> 3);
+            material[4] = (byte) (keyBytes[3] << 4 | (keyBytes[4] & 0xff) >>> 4);
+            material[5] = (byte) (keyBytes[4] << 3 | (keyBytes[5] & 0xff) >>> 5);
+            material[6] = (byte) (keyBytes[5] << 2 | (keyBytes[6] & 0xff) >>> 6);
+            material[7] = (byte) (keyBytes[6] << 1);
+
+            // Applies odd parity to the given byte array.
+            for (int i = 0; i < keyBytes.length; i++) {
+                byte b = keyBytes[i];
+                boolean needsParity = (((b >>> 7) ^ (b >>> 6) ^ (b >>> 5) ^
+                        (b >>> 4) ^ (b >>> 3) ^ (b >>> 2) ^
+                        (b >>> 1)) & 0x01) == 0;
+                if (needsParity) {
+                    keyBytes[i] |= (byte) 0x01;
+                } else {
+                    keyBytes[i] &= (byte) 0xfe;
+                }
+            }
+            SecretKey secretKey = new SecretKeySpec(material, "DES");
+
+            Cipher des = createDES();
+            des.init(Cipher.ENCRYPT_MODE, secretKey);
+            return des.doFinal(data.getData(), data.getOffset(), data.getLength());
+        } catch (Exception e) {
+            throw new RuntimeException("Internal error", e);
+        }
+    }
+
+    /**
+     * 6 Appendix A: Cryptographic Operations Reference
+     *
+     * DESL(K, D) Indicates the encryption of an 8-byte data item D with the 3.3.1
+           16-byte key K using the Data Encryption Standard Long
+           (DESL) algorithm. The result is 24 bytes in length. DESL(K,
+           D) is computed as follows.
+ConcatenationOf( DES(K[0..6], D), \
+DES(K[7..13], D), DES( \
+ConcatenationOf(K[14..15], Z(5)), D));
+Note K[] implies a key represented as a character array.
+
+     * @param keyData key
+     * @param data data
+     * @return DESL result
+     */
+    public static byte[] calculateDESL(byte[] keyData, ByteArray data) {
+        byte[] out1 = calculateDES(new ByteArray(keyData, 0, 6), data);
+        byte[] out2 = calculateDES(new ByteArray(keyData, 7, 6), data);
+        byte[] out3 = calculateDES(new ByteArray(keyData, 14, 6), data);
+        return concat(out1, out2, out3);
+    }
+
+
+    /**
+     * CRC32(M) Indicates a 32-bit CRC calculated over M. 3.4.3, 3.4.4
+     * @return crc
+     */
+    public static byte[] calculateCRC32(byte[] data) {
+        Checksum checksum = new CRC32();
+        /*
+        * To compute the CRC32 checksum for byte array, use
+        *
+        * void update(bytes[] b, int start, int length)
+        * method of CRC32 class.
+        */
+
+        checksum.update(data, 0, data.length);
+
+        /*
+        * Get the generated checksum using
+        * getValue method of CRC32 class.
+        */
+        long lngChecksum = checksum.getValue();
+
+        return intToBytes((int) lngChecksum);
+    }
+
+    /**
      * Generate random byte array
      *
      * @param length array length
@@ -310,10 +442,14 @@ public class Algorithms {
      */
     public static byte[] nonce(int length) {
         byte[] nonce = new byte[length];
-        for (int i = 0; i < nonce.length; i++) {
-            nonce[i] = (byte) (Math.random() * 256);
-        }
+        nonce(nonce, 0, length);
         return nonce;
+    }
+
+    public static void nonce(byte[] array, int offset, int length) {
+        for (int i = offset+length-1; i >= offset ; i--) {
+            array[i] = (byte) (Math.random() * 256);
+        }
     }
 
     public static final class ByteArray {
@@ -330,7 +466,7 @@ public class Algorithms {
         public ByteArray(byte[] data, int offset, int length) {
             this.data = data;
             this.offset = offset;
-            this.length = length;
+            this.length = Math.min(length, data.length - offset);
         }
 
         public byte[] getData() {
