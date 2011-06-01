@@ -477,6 +477,8 @@ null-terminated. <15>
      */
     public static final int MsvChannelBindings = 10;
 
+    public static final int MS_AV_LENGTH = 11;
+
 
     /**
      * Create ByteArray for referenced data

@@ -150,7 +150,7 @@ public class Algorithms {
     }
 
     public static String bytesToString(byte[] data, int offset, int length) {
-        char[] out = new char[data.length * 2];
+        char[] out = new char[length * 2];
         bytesToChars(data, offset, length, out, 0);
         return new String(out);
     }
@@ -198,7 +198,8 @@ public class Algorithms {
 
     public static byte[] concat(Object... args) {
         int length = 0;
-        for (Object arg : args) {
+        for (int i = 0; i < args.length; i++) {
+            Object arg = args[i];
             if (arg instanceof ByteArray) {
                 ByteArray byteArray = (ByteArray) arg;
                 length += byteArray.getLength();
@@ -206,7 +207,7 @@ public class Algorithms {
                 byte[] bytes = (byte[]) arg;
                 length += bytes.length;
             } else {
-                throw new RuntimeException("Unknown type. Only ByteArray or byte[] are supported");
+                throw new RuntimeException("Unknown type. Only ByteArray or byte[] are supported[" + i + "]: " + arg);
             }
         }
         byte[] data = new byte[length];
@@ -484,6 +485,10 @@ Note K[] implies a key represented as a character array.
         public int copyTo(byte[] dstData, int dstOffset) {
             System.arraycopy(data, offset, dstData, dstOffset, length);
             return length;
+        }
+
+        public String asString(Charset charset) {
+            return new String(data, offset, length, charset);            
         }
     }
 

@@ -3,10 +3,12 @@
  */
 package org.microsoft.security.ntlm.impl;
 
+import org.microsoft.security.ntlm.NtlmAuthenticator;
+
 import javax.crypto.Mac;
 import java.security.MessageDigest;
 
-import static org.microsoft.security.ntlm.NtlmAuthenticator.ConnectionType;
+import static org.microsoft.security.ntlm.NtlmAuthenticator.*;
 import static org.microsoft.security.ntlm.impl.Algorithms.ByteArray;
 import static org.microsoft.security.ntlm.impl.Algorithms.UNICODE_ENCODING;
 import static org.microsoft.security.ntlm.impl.Algorithms.calculateHmacMD5;
@@ -23,8 +25,8 @@ public class NtlmV2Session extends NtlmSessionBase {
 
     private byte[] ntowfv2;
 
-    public NtlmV2Session(ConnectionType connectionType, byte[] ntowfv2, String hostname, String domain, String username) {
-        super(connectionType, hostname, domain, username);
+    public NtlmV2Session(ConnectionType connectionType, byte[] ntowfv2, WindowsVersion windowsVersion, String hostname, String domain, String username) {
+        super(connectionType, windowsVersion, hostname, domain, username);
         this.ntowfv2 = ntowfv2;
     }
 

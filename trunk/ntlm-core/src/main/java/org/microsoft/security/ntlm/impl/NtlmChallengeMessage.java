@@ -8,6 +8,7 @@ import static org.microsoft.security.ntlm.impl.Algorithms.UNICODE_ENCODING;
 import static org.microsoft.security.ntlm.impl.Algorithms.bytesTo2;
 import static org.microsoft.security.ntlm.impl.Algorithms.bytesTo4;
 import static org.microsoft.security.ntlm.impl.Algorithms.compareArray;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.*;
 
 /**
  * [MS-NLMP]
@@ -38,15 +39,16 @@ public class NtlmChallengeMessage {
     private int negotiateFlags;
     private ByteArray serverChallenge;
     private ByteArray targetInfo;
+    private ByteArray[] targetInfoPairs;
     private ByteArray time;
-    private NtlmRoutines.MsvAvFlag msvAvFlag;
+    private MsvAvFlag msvAvFlag;
 
     public NtlmChallengeMessage(byte[] data) {
         messageData = data;
 
         // Signature (8 bytes): An 8-byte character array that MUST contain the ASCII string ('N', 'T', 'L', 'M', 'S', 'S', 'P', '\0').
 
-        if (!compareArray(data, 0, NtlmRoutines.NTLM_MESSAGE_SIGNATURE, 0, NtlmRoutines.NTLM_MESSAGE_SIGNATURE.length)) {
+        if (!compareArray(data, 0, NTLM_MESSAGE_SIGNATURE, 0, NTLM_MESSAGE_SIGNATURE.length)) {
             throw new RuntimeException("Invalid signature");
         }
 
@@ -90,7 +92,7 @@ interpret messages with Version fields.
          */
 
 
-        if (NtlmRoutines.NTLMSSP_NEGOTIATE_TARGET_INFO.isSet(negotiateFlags)) {
+        if (NTLMSSP_NEGOTIATE_TARGET_INFO.isSet(negotiateFlags)) {
             parseTargetInfo();
         }
     }
@@ -111,7 +113,11 @@ interpret messages with Version fields.
         return targetInfo;
     }
 
-    public NtlmRoutines.MsvAvFlag getMsvAvFlag() {
+    public ByteArray[] getTargetInfoPairs() {
+        return targetInfoPairs;
+    }
+
+    public MsvAvFlag getMsvAvFlag() {
         return msvAvFlag;
     }
 
@@ -124,25 +130,25 @@ interpret messages with Version fields.
 NegotiateFlags is set, indicating that TargetInfo is required:
      */
     private void parseTargetInfo() {
-        targetInfo = NtlmRoutines.getMicrosoftArray(messageData, 40);
-
+        targetInfo = getMicrosoftArray(messageData, 40);
+        targetInfoPairs = new ByteArray[MS_AV_LENGTH];
         int offset = targetInfo.getOffset();
         while (true) {
             if (offset >= targetInfo.getOffset() + targetInfo.getLength()) {
                 throw new RuntimeException("Target info out of bound: " + offset);
             }
             int id = bytesTo2(messageData, offset);
-            if (id == NtlmRoutines.MsvAvEOL) break;
+            if (id == MsvAvEOL) break;
             int len = bytesTo2(messageData, offset+2);
-            if (id <= NtlmRoutines.MsvAvDnsTreeName || id == NtlmRoutines.MsvAvTargetName) {
-                String value = new String(messageData, offset + 4, len, UNICODE_ENCODING);
-            } else if (id == NtlmRoutines.MsvAvTimestamp) {
-//                time = bytesTo8(messageData, offset + 4);
-//                timeOffset = offset + 4;
-                time = new ByteArray(messageData, offset+4, 8);
-            } if (id == NtlmRoutines.MsvAvFlags) {
+            ByteArray pairData = new ByteArray(messageData, offset + 4, len);
+            targetInfoPairs[id] = pairData;
+            if (id <= MsvAvDnsTreeName || id == MsvAvTargetName) {
+                // text value
+            } else if (id == MsvAvTimestamp) {
+                time = pairData;
+            } if (id == MsvAvFlags) {
                 int msvAvFlagsValue = bytesTo4(messageData, offset + 4);
-                msvAvFlag = NtlmRoutines.MsvAvFlag.values()[msvAvFlagsValue - 1];
+                msvAvFlag = MsvAvFlag.values()[msvAvFlagsValue - 1];
             } else {
 
             }
