@@ -6,7 +6,9 @@ package org.microsoft.security.ntlm.impl;
 import org.microsoft.security.ntlm.NtlmAuthenticator;
 import org.microsoft.security.ntlm.NtlmSession;
 
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
 
 import static org.microsoft.security.ntlm.NtlmAuthenticator.ConnectionType;
 import static org.microsoft.security.ntlm.NtlmAuthenticator.NEGOTIATE_FLAGS_CONN;
@@ -26,10 +28,10 @@ import static org.microsoft.security.ntlm.impl.NtlmRoutines.*;
  */
 public abstract class NtlmSessionBase  implements NtlmSession {
     private static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
-    static final byte[] WINDOWS_VERSION = WindowsVersion.Windows7.data;
 
     private ConnectionType connectionType;
 
+    private WindowsVersion windowsVersion;
     private String hostname;
     private String domain;
     private String username;
@@ -54,8 +56,9 @@ public abstract class NtlmSessionBase  implements NtlmSession {
     ByteArray serverChallenge;
 
 
-    public NtlmSessionBase(ConnectionType connectionType, String hostname, String domain, String username) {
+    public NtlmSessionBase(ConnectionType connectionType, WindowsVersion windowsVersion, String hostname, String domain, String username) {
         this.connectionType = connectionType;
+        this.windowsVersion = windowsVersion;
         this.hostname = hostname;
         this.domain = domain;
         this.username = username;
@@ -159,11 +162,24 @@ Set AUTHENTICATE_MESSAGE.MIC to MIC
     @Override
     public void processChallengeMessage(byte[] challengeMessageData) {
         NtlmChallengeMessage challengeMessage = new NtlmChallengeMessage(challengeMessageData);
-        negotiateFlags = challengeMessage.getNegotiateFlags();
+        int negotiateFlags = challengeMessage.getNegotiateFlags();
 
+/*
+3.1.5.1.2
+If NTLM v2 authentication is used, the client SHOULD send the timestamp in the
+CHALLENGE_MESSAGE. <40>
+<40> Section 3.1.5.1.2: Not supported by Windows NT, Windows 2000, Windows XP, and Windows
+Server 2003.
+
+If there exists a CHALLENGE_MESSAGE.NTLMv2_CLIENT_CHALLENGE.AvId == MsvAvTimestamp
+    Set Time to CHALLENGE_MESSAGE.TargetInfo.Value of that AVPair
+Else
+    Set Time to Currenttime
+Endif
+
+ */
         Algorithms.ByteArray time = challengeMessage.getTime();
         if (time == null) {
-            // todo [!]
             time = new Algorithms.ByteArray(msTimestamp());
         }
 
@@ -188,30 +204,28 @@ Set AUTHENTICATE_MESSAGE.MIC to MIC
     void processChallengeMessage(NtlmChallengeMessage challengeMessage, byte[] clientChallenge, ByteArray time
             , byte[] randomForSessionKey, byte[] randomForSealKey)
     {
+        negotiateFlags = challengeMessage.getNegotiateFlags();
+/*
         if (connectionType == ConnectionType.connectionless) {
             negotiateFlags = (negotiateFlags & NtlmAuthenticator.NEGOTIATE_FLAGS_CONNLESS) | NTLMSSP_REQUEST_TARGET_FLAG;
-            if (NTLMSSP_NEGOTIATE_56.isSet(negotiateFlags) && NTLMSSP_NEGOTIATE_128.isSet(negotiateFlags)) {
-                negotiateFlags = NTLMSSP_NEGOTIATE_56.excludeFlag(negotiateFlags);
-            }
-            if (NTLMSSP_NEGOTIATE_LM_KEY.isSet(negotiateFlags) && NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY.isSet(negotiateFlags)) {
-                negotiateFlags = NTLMSSP_NEGOTIATE_LM_KEY.excludeFlag(negotiateFlags);
-            }
         }
+*/
+        negotiateFlags = negotiateFlags | NTLMSSP_REQUEST_TARGET_FLAG;
 
 /*
-3.1.5.1.2
-If NTLM v2 authentication is used, the client SHOULD send the timestamp in the
-CHALLENGE_MESSAGE. <40>
-<40> Section 3.1.5.1.2: Not supported by Windows NT, Windows 2000, Windows XP, and Windows
-Server 2003.
+        Note: in [MS-NLMP] example both flags are present
 
-If there exists a CHALLENGE_MESSAGE.NTLMv2_CLIENT_CHALLENGE.AvId == MsvAvTimestamp
-    Set Time to CHALLENGE_MESSAGE.TargetInfo.Value of that AVPair
-Else
-    Set Time to Currenttime
-Endif
+        if (NTLMSSP_NEGOTIATE_56.isSet(negotiateFlags) && NTLMSSP_NEGOTIATE_128.isSet(negotiateFlags)) {
+            negotiateFlags = NTLMSSP_NEGOTIATE_56.excludeFlag(negotiateFlags);
+        }
+*/
+        if (NTLMSSP_NEGOTIATE_OEM.isSet(negotiateFlags) && NTLMSSP_NEGOTIATE_UNICODE.isSet(negotiateFlags)) {
+            negotiateFlags = NTLMSSP_NEGOTIATE_OEM.excludeFlag(negotiateFlags);
+        }
+        if (NTLMSSP_NEGOTIATE_LM_KEY.isSet(negotiateFlags) && NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY.isSet(negotiateFlags)) {
+            negotiateFlags = NTLMSSP_NEGOTIATE_LM_KEY.excludeFlag(negotiateFlags);
+        }
 
- */
         serverChallenge = challengeMessage.getServerChallenge();
         calculateNTLMResponse(time, clientChallenge, challengeMessage.getTargetInfo());
         calculateKeys(randomForSessionKey, randomForSealKey);
@@ -228,18 +242,44 @@ Endif
         authenticateMessage.appendStructure(hostname);
         authenticateMessage.appendStructure(encryptedRandomSessionKey);
         authenticateMessage.appendPlain(intToBytes(negotiateFlags));
-        authenticateMessage.appendPlain(WINDOWS_VERSION);
+
+        /*
+A VERSION structure (section 2.2.2.10) that is present only when the
+NTLMSSP_NEGOTIATE_VERSION flag is set in the NegotiateFlags field. This structure is used
+for debugging purposes only. In normal protocol messages, it is ignored and does not affect
+the NTLM message processing.<9>
+
+ <9> Section 2.2.1.3: The Version field is NOT sent or consumed by Windows NT or Windows 2000.
+Windows NT and Windows 2000 assume that the Payload field started immediately after
+NegotiateFlags. Since all references into the Payload field are by offset from the start of the
+message (not from the start of the Payload field), Windows NT and Windows 2000 can correctly
+interpret messages constructed with Version fields
+       
+         */
+        if (windowsVersion.ordinal() >= WindowsVersion.WindowsXp.ordinal() && NTLMSSP_NEGOTIATE_VERSION.isSet(negotiateFlags)) {
+            authenticateMessage.appendPlain(windowsVersion.data);
+        }
+
 
 /*
-Set MIC to HMAC_MD5(ExportedSessionKey, ConcatenationOf(NEGOTIATE_MESSAGE, CHALLENGE_MESSAGE, AUTHENTICATE_MESSAGE))
+The message integrity for the NTLM NEGOTIATE_MESSAGE,
+CHALLENGE_MESSAGE, and AUTHENTICATE_MESSAGE.<10>
+
+<10> Section 2.2.1.3: The MIC field is omitted in Windows NT, Windows 2000, Windows XP, and
+Windows Server 2003.
+
+
+3.1.5.1.2 Set MIC to HMAC_MD5(ExportedSessionKey, ConcatenationOf(NEGOTIATE_MESSAGE, CHALLENGE_MESSAGE, AUTHENTICATE_MESSAGE))
 Set AUTHENTICATE_MESSAGE.MIC to MIC
  */
-        byte[] mic = calculateHmacMD5(exportedSessionKey,
-                connectionType == ConnectionType.connectionOriented ?
-                        concat(negotiateMessageData, challengeMessage.getMessageData(), authenticateMessage.getData()) :
-                        concat(challengeMessage.getMessageData(), authenticateMessage.getData())
-        );
-        authenticateMessage.appendStructure(mic);
+        if (windowsVersion.ordinal() >= WindowsVersion.WindowsVista.ordinal()) {
+            byte[] mic = calculateHmacMD5(exportedSessionKey,
+                    connectionType == ConnectionType.connectionOriented ?
+                            concat(negotiateMessageData, challengeMessage.getMessageData(), authenticateMessage.getData()) :
+                            concat(challengeMessage.getMessageData(), authenticateMessage.getData())
+            );
+            authenticateMessage.appendStructure(mic);
+        }
     }
 
 
@@ -315,7 +355,7 @@ RC4Init(ServerHandle, ServerSealingKey)
             negotiateMessage.appendPlain(intToBytes(negotiateFlags));
             negotiateMessage.appendStructure(domain);
             negotiateMessage.appendStructure(hostname);
-            negotiateMessage.appendPlain(WINDOWS_VERSION);
+            negotiateMessage.appendPlain(windowsVersion.data);
             negotiateMessageData = negotiateMessage.getData();
         } else {
             negotiateMessageData = EMPTY_BYTE_ARRAY;
@@ -399,10 +439,15 @@ session security.
 
      */
     public byte[] seal(byte[] message) {
-        if (connectionType != NtlmAuthenticator.ConnectionType.connectionless || !NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY.isSet(negotiateFlags)) {
+        if (connectionType == NtlmAuthenticator.ConnectionType.connectionless && !NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY.isSet(negotiateFlags)) {
             throw new RuntimeException("Message confidentiality is available in connectionless mode only if the client configures extended session security.");
         }
-        return null;
+//        clientSealingKeyCipher.update(message);
+        try {
+            return clientSealingKeyCipher.doFinal(message);
+        } catch (Exception e) {
+            throw new RuntimeException("Internal error", e);
+        }
     }
 
     /*
@@ -428,7 +473,11 @@ SeqNum (4 bytes):
      */
 
     public byte[] calculateMac(byte[] message) {
-        return mac(negotiateFlags, seqNum, clientSigningKey, clientSealingKeyCipher, EMPTY_ARRAY, message);
+        byte[] mac = mac(negotiateFlags, seqNum, clientSigningKey, clientSealingKeyCipher, EMPTY_ARRAY, message);
+        if (connectionType == ConnectionType.connectionOriented) {
+            seqNum++;
+        }
+        return mac;
     }
 
 

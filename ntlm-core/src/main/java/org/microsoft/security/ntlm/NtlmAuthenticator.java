@@ -29,6 +29,9 @@ import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_REQUEST_TARG
  */
 public class NtlmAuthenticator {
 
+    private static final WindowsVersion DEFAULT_WINDOWS_VERSION = WindowsVersion.Windows7;
+
+
     /*
 3.1.1.1 Variables Internal to the Protocol
 
@@ -243,10 +246,10 @@ Windows 2000, Windows XP, Windows Server 2003, Windows Vista, and Windows Server
     public NtlmSession createSession() {
         switch (ntlmVersion) {
             case ntlmv1:
-                return new NtlmV1Session(connectionType, ntowf, lmowf, hostname, domain, username);
+                return new NtlmV1Session(connectionType, ntowf, lmowf, DEFAULT_WINDOWS_VERSION, hostname, domain, username);
 
             case ntlmv2:
-                return new NtlmV2Session(connectionType, ntowf, hostname, domain, username);
+                return new NtlmV2Session(connectionType, ntowf, DEFAULT_WINDOWS_VERSION, hostname, domain, username);
 
             default:
                 throw new RuntimeException("Internal error. Unsupported NTLM version");

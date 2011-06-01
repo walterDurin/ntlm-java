@@ -1,6 +1,8 @@
 package org.microsoft.security.ntlm.impl;
 
-import static org.microsoft.security.ntlm.NtlmAuthenticator.ConnectionType;
+import org.microsoft.security.ntlm.NtlmAuthenticator;
+
+import static org.microsoft.security.ntlm.NtlmAuthenticator.*;
 import static org.microsoft.security.ntlm.impl.Algorithms.ByteArray;
 import static org.microsoft.security.ntlm.impl.Algorithms.*;
 import static org.microsoft.security.ntlm.impl.Algorithms.calculateMD5;
@@ -30,8 +32,8 @@ public class NtlmV1Session extends NtlmSessionBase {
     private byte[] lmowfv1;
 
 
-    public NtlmV1Session(ConnectionType connectionType, byte[] ntowfv1, byte[] lmowfv1, String hostname, String domain, String username) {
-        super(connectionType, hostname, domain, username);
+    public NtlmV1Session(ConnectionType connectionType, byte[] ntowfv1, byte[] lmowfv1, WindowsVersion windowsVersion, String hostname, String domain, String username) {
+        super(connectionType, windowsVersion, hostname, domain, username);
         this.ntowfv1 = ntowfv1;
         this.lmowfv1 = lmowfv1;
     }
