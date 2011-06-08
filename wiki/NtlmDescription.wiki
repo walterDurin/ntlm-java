@@ -10,12 +10,12 @@ requires knowledge of the user's password. The server (or another party trusted 
 validate the response by consulting an account database to get the user's password and computing
 the proper response for that challenge.
 
-The NTLM protocols are embedded protocols. Unlike stand-alone application protocols such as [MS-SMB] or HTTP, NTLM messages are embedded in the packets of an application protocol that requires
+The NTLM protocols are embedded protocols. Unlike stand-alone application protocols such as MS-SMB or HTTP, NTLM messages are embedded in the packets of an application protocol that requires
 authentication of a user. The application protocol semantics determine how and when the NTLM
 messages are encoded, framed, and transported from the client to the server and vice versa.
 
 The NT LAN Manager (NTLM) Authentication Protocol is used in Microsoft Windows® for
-authentication between clients and servers. For Microsoft Windows® 2000 Server operating system, Windows® XP operating system, Windows Server® 2003 operating system, Windows Vista® operating system, and Windows Server® 2008 operating system, Kerberos authentication [MS-KILE] replaces NTLM as the preferred authentication
+authentication between clients and servers. For Microsoft Windows® 2000 Server operating system, Windows® XP operating system, Windows Server® 2003 operating system, Windows Vista® operating system, and Windows Server® 2008 operating system, Kerberos authentication MS-KILE replaces NTLM as the preferred authentication
 protocol.
 
 However, NTLM can be used when the Kerberos Protocol Extensions (KILE) do not work, such as in
