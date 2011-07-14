@@ -6,14 +6,14 @@ In order to use this example you have to create appropriate properties file. Run
 
 
 Usage is simple:
-1) create NtlmAuthenticator instance:
+1) create !NtlmAuthenticator instance:
 {{{
             NtlmAuthenticator ntlmAuthentication = new NtlmAuthenticator(NtlmAuthenticator.NtlmVersion.ntlmv2,
  NtlmAuthenticator.ConnectionType.connectionless
                     , NTLM_HOSTNAME, NTLM_DOMAIN, username, password);
 }}}
 
-2) create NtlmSession:
+2) create !NtlmSession:
 {{{
 NtlmSession ntlmSession = ntlmAuthentication.createSession();
 }}}
@@ -23,12 +23,12 @@ NtlmSession ntlmSession = ntlmAuthentication.createSession();
 ntlmSession.generateNegotiateMessage();
 }}}
 
-4) After receiving ChallengeMessage process it:
+4) After receiving !ChallengeMessage process it:
 {{{
 ntlmSession.processChallengeMessage(challengeMessageData);
 }}}
 
-5) Generate and send AuthenticateMessage:
+5) Generate and send !AuthenticateMessage:
 {{{
 ntlmSession.generateAuthenticateMessage();
 }}}
