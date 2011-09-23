@@ -18,13 +18,84 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <source>1.6</source>
                     <target>1.6</target>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>buildnumber-maven-plugin</artifactId>
+                <version>1.0</version>
+                <executions>
+                    <execution>
+                        <phase>validate</phase>
+                        <goals><goal>create</goal></goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <doCheck>false</doCheck>
+                    <doUpdate>false</doUpdate>
+                    <providerImplementations><svn>javasvn</svn></providerImplementations>
+                </configuration>
+            </plugin>
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>2.1</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                            <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                        </manifest>
+                        <manifestEntries>
+                            <Implementation-Build>r${buildNumber} ${maven.build.timestamp}</Implementation-Build>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>2.1.2</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>jar</goal></goals>
+                    </execution>
+                </executions>
+                <configuration>
+<!--
+                    <outputDirectory>/absolute/path/to/the/output/directory</outputDirectory>
+                    <finalName>filename-of-generated-jar-file</finalName>
+-->
+                    <attach>false</attach>
+                </configuration>
+            </plugin>
+            <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>2.2.1</version>
+                <configuration>
+                    <descriptorRefs>
+                        <descriptorRef>bin</descriptorRef>
+                        <descriptorRef>project</descriptorRef>
+                    </descriptorRefs>
+                </configuration>
+            </plugin>
         </plugins>
+        <finalName>ntlm-core-1.0-r${buildNumber}</finalName>
     </build>
+
+     <scm>
+         <connection>scm:svn:https://ntlm-java.googlecode.com/svn/trunk/ntlm-core</connection>
+         <developerConnection>scm:svn:https://ntlm-java.googlecode.com/svn/trunk/ntlm-core</developerConnection>
+         <tag>HEAD</tag>
+         <url>https://ntlm-java.googlecode.com/svn</url>
+     </scm>
+    
+    <properties>
+        <maven.build.timestamp.format>yyyy/MM/dd-HH:mm</maven.build.timestamp.format>
+    </properties>
+
 </project>
