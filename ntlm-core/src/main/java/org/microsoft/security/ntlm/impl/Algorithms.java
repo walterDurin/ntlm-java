@@ -6,12 +6,9 @@ package org.microsoft.security.ntlm.impl;
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.DESKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.security.Key;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.zip.CRC32;
@@ -413,7 +410,8 @@ Note K[] implies a key represented as a character array.
 
     /**
      * CRC32(M) Indicates a 32-bit CRC calculated over M. 3.4.3, 3.4.4
-     * @return crc
+     * todo [6] use sun.security.krb5.internal.crypto.crc32.byte2crc32sum_bytes()
+     * @return cr
      */
     public static byte[] calculateCRC32(byte[] data) {
         Checksum checksum = new CRC32();
