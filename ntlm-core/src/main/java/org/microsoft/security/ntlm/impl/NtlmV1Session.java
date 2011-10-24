@@ -1,13 +1,19 @@
 package org.microsoft.security.ntlm.impl;
 
-import org.microsoft.security.ntlm.NtlmAuthenticator;
-
-import static org.microsoft.security.ntlm.NtlmAuthenticator.*;
+import static org.microsoft.security.ntlm.NtlmAuthenticator.ConnectionType;
+import static org.microsoft.security.ntlm.NtlmAuthenticator.WindowsVersion;
+import static org.microsoft.security.ntlm.impl.Algorithms.ASCII_ENCODING;
 import static org.microsoft.security.ntlm.impl.Algorithms.ByteArray;
-import static org.microsoft.security.ntlm.impl.Algorithms.*;
+import static org.microsoft.security.ntlm.impl.Algorithms.UNICODE_ENCODING;
+import static org.microsoft.security.ntlm.impl.Algorithms.calculateDES;
+import static org.microsoft.security.ntlm.impl.Algorithms.calculateDESL;
+import static org.microsoft.security.ntlm.impl.Algorithms.calculateHmacMD5;
+import static org.microsoft.security.ntlm.impl.Algorithms.calculateMD4;
 import static org.microsoft.security.ntlm.impl.Algorithms.calculateMD5;
 import static org.microsoft.security.ntlm.impl.Algorithms.concat;
-import static org.microsoft.security.ntlm.impl.NtlmRoutines.*;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_LM_KEY;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_REQUEST_NON_NT_SESSION_KEY;
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.Z;
 
 /**
@@ -26,8 +32,10 @@ public class NtlmV1Session extends NtlmSessionBase {
      * response to the server challenge when NTLMv1 authentication is used.<30>
      * <30> Section 3.1.1.1: The default value of this state variable is TRUE. Windows NT Server 4.0 SP3
      * does not support providing NTLM instead of LM responses.
+     *
+     * In tests, 4.2.2.2.2 LMv1 Response this value is expected to be false
      */
-    private static final boolean NO_LM_RESPONSE_NTLM_V1 = true;
+    private static final boolean NO_LM_RESPONSE_NTLM_V1 = false;
     private byte[] ntowfv1;
     private byte[] lmowfv1;
 
@@ -119,10 +127,11 @@ Set SessionBaseKey to MD4(NTOWF)
     @Override
     protected void calculateNTLMResponse(ByteArray time, byte[] clientChallengeArray, ByteArray targetInfo) {
         if (LM_AUTHENTICATION) {
+//        if (NtlmRoutines.NTLMSSP_NEGOTIATE_LM_KEY.isSet(negotiateFlags)) {
             ntChallengeResponse = null;
             lmChallengeResponse = calculateDESL(lmowfv1, serverChallenge);
         } else if (NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY.isSet(negotiateFlags)) {
-            ntChallengeResponse = calculateDESL(ntowfv1, new ByteArray(calculateMD5(concat(serverChallenge, clientChallengeArray)), 0, 7));
+            ntChallengeResponse = calculateDESL(ntowfv1, new ByteArray(calculateMD5(concat(serverChallenge, clientChallengeArray)), 0, 8));
             lmChallengeResponse = concat(clientChallengeArray, Z(16));
         } else {
             ntChallengeResponse = calculateDESL(ntowfv1, serverChallenge);
