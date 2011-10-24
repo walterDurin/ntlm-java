@@ -6,20 +6,35 @@ package org.microsoft.security.ntlm.impl;
 import org.microsoft.security.ntlm.NtlmAuthenticator;
 import org.microsoft.security.ntlm.NtlmSession;
 
-import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
 
 import static org.microsoft.security.ntlm.NtlmAuthenticator.ConnectionType;
 import static org.microsoft.security.ntlm.NtlmAuthenticator.NEGOTIATE_FLAGS_CONN;
 import static org.microsoft.security.ntlm.NtlmAuthenticator.NEGOTIATE_FLAGS_CONNLESS;
 import static org.microsoft.security.ntlm.NtlmAuthenticator.WindowsVersion;
-import static org.microsoft.security.ntlm.impl.Algorithms.*;
+import static org.microsoft.security.ntlm.impl.Algorithms.ByteArray;
+import static org.microsoft.security.ntlm.impl.Algorithms.EMPTY_ARRAY;
+import static org.microsoft.security.ntlm.impl.Algorithms.calculateHmacMD5;
 import static org.microsoft.security.ntlm.impl.Algorithms.calculateRC4K;
 import static org.microsoft.security.ntlm.impl.Algorithms.concat;
 import static org.microsoft.security.ntlm.impl.Algorithms.createRC4;
 import static org.microsoft.security.ntlm.impl.Algorithms.intToBytes;
-import static org.microsoft.security.ntlm.impl.NtlmRoutines.*;
+import static org.microsoft.security.ntlm.impl.Algorithms.msTimestamp;
+import static org.microsoft.security.ntlm.impl.Algorithms.nonce;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_128;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_56;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_KEY_EXCH;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_LM_KEY;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_OEM;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_UNICODE;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_VERSION;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_REQUEST_TARGET_FLAG;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.SignkeyMode;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.mac;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.reinitSealingKey;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.sealkey;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.signkey;
 
 /**
  *
@@ -439,9 +454,11 @@ session security.
 
      */
     public byte[] seal(byte[] message) {
+/*
         if (connectionType == NtlmAuthenticator.ConnectionType.connectionless && !NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY.isSet(negotiateFlags)) {
             throw new RuntimeException("Message confidentiality is available in connectionless mode only if the client configures extended session security.");
         }
+*/
 //        clientSealingKeyCipher.update(message);
         try {
             return clientSealingKeyCipher.doFinal(message);

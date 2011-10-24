@@ -3,15 +3,15 @@
  */
 package org.microsoft.security.ntlm.impl;
 
-import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.Mac;
 
-import static org.microsoft.security.ntlm.impl.Algorithms.*;
+import static org.microsoft.security.ntlm.impl.Algorithms.ASCII_ENCODING;
 import static org.microsoft.security.ntlm.impl.Algorithms.ByteArray;
+import static org.microsoft.security.ntlm.impl.Algorithms.EMPTY_ARRAY;
 import static org.microsoft.security.ntlm.impl.Algorithms.bytesTo2;
 import static org.microsoft.security.ntlm.impl.Algorithms.bytesTo4;
+import static org.microsoft.security.ntlm.impl.Algorithms.calculateCRC32;
 import static org.microsoft.security.ntlm.impl.Algorithms.calculateMD5;
 import static org.microsoft.security.ntlm.impl.Algorithms.concat;
 import static org.microsoft.security.ntlm.impl.Algorithms.createHmacMD5;
@@ -494,7 +494,7 @@ null-terminated. <15>
         return len > 0 ? new ByteArray(data, arrayOffset, len) : null;
     }
 
-    private static final byte[] Z_ARRAY = new byte[8];
+    private static final byte[] Z_ARRAY = new byte[16];
     public static ByteArray Z(int length) {
         if (length > Z_ARRAY.length) {
             throw new RuntimeException("Legth exceed: " + length);

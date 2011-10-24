@@ -353,25 +353,25 @@ they are created.
                 System.arraycopy(keyData.getData(), keyData.getOffset(), keyBytes, 0, keyData.getLength());
             }
             byte[] material = new byte[8];
-            material[0] = keyBytes[0];
-            material[1] = (byte) (keyBytes[0] << 7 | (keyBytes[1] & 0xff) >>> 1);
-            material[2] = (byte) (keyBytes[1] << 6 | (keyBytes[2] & 0xff) >>> 2);
-            material[3] = (byte) (keyBytes[2] << 5 | (keyBytes[3] & 0xff) >>> 3);
-            material[4] = (byte) (keyBytes[3] << 4 | (keyBytes[4] & 0xff) >>> 4);
-            material[5] = (byte) (keyBytes[4] << 3 | (keyBytes[5] & 0xff) >>> 5);
-            material[6] = (byte) (keyBytes[5] << 2 | (keyBytes[6] & 0xff) >>> 6);
-            material[7] = (byte) (keyBytes[6] << 1);
+            material[0] = keyData.getNotNullByte(0);
+            material[1] = (byte) (keyData.getNotNullByte(0) << 7 | (keyData.getNotNullByte(1) & 0xff) >>> 1);
+            material[2] = (byte) (keyData.getNotNullByte(1) << 6 | (keyData.getNotNullByte(2) & 0xff) >>> 2);
+            material[3] = (byte) (keyData.getNotNullByte(2) << 5 | (keyData.getNotNullByte(3) & 0xff) >>> 3);
+            material[4] = (byte) (keyData.getNotNullByte(3) << 4 | (keyData.getNotNullByte(4) & 0xff) >>> 4);
+            material[5] = (byte) (keyData.getNotNullByte(4) << 3 | (keyData.getNotNullByte(5) & 0xff) >>> 5);
+            material[6] = (byte) (keyData.getNotNullByte(5) << 2 | (keyData.getNotNullByte(6) & 0xff) >>> 6);
+            material[7] = (byte) (keyData.getNotNullByte(6) << 1);
 
             // Applies odd parity to the given byte array.
-            for (int i = 0; i < keyBytes.length; i++) {
-                byte b = keyBytes[i];
+            for (int i = 0; i < material.length; i++) {
+                byte b = material[i];
                 boolean needsParity = (((b >>> 7) ^ (b >>> 6) ^ (b >>> 5) ^
                         (b >>> 4) ^ (b >>> 3) ^ (b >>> 2) ^
                         (b >>> 1)) & 0x01) == 0;
                 if (needsParity) {
-                    keyBytes[i] |= (byte) 0x01;
+                    material[i] |= (byte) 0x01;
                 } else {
-                    keyBytes[i] &= (byte) 0xfe;
+                    material[i] &= (byte) 0xfe;
                 }
             }
             SecretKey secretKey = new SecretKeySpec(material, "DES");
@@ -401,9 +401,9 @@ Note K[] implies a key represented as a character array.
      * @return DESL result
      */
     public static byte[] calculateDESL(byte[] keyData, ByteArray data) {
-        byte[] out1 = calculateDES(new ByteArray(keyData, 0, 6), data);
-        byte[] out2 = calculateDES(new ByteArray(keyData, 7, 6), data);
-        byte[] out3 = calculateDES(new ByteArray(keyData, 14, 6), data);
+        byte[] out1 = calculateDES(new ByteArray(keyData, 0, 7), data);
+        byte[] out2 = calculateDES(new ByteArray(keyData, 7, 7), data);
+        byte[] out3 = calculateDES(new ByteArray(keyData, 14, 7), data);
         return concat(out1, out2, out3);
     }
 
@@ -483,6 +483,16 @@ Note K[] implies a key represented as a character array.
         public int copyTo(byte[] dstData, int dstOffset) {
             System.arraycopy(data, offset, dstData, dstOffset, length);
             return length;
+        }
+
+        /**
+         * Return byte or zero
+         *
+         * @param pos
+         * @return
+         */
+        public byte getNotNullByte(int pos) {
+            return pos >= length ? 0 : data[offset + pos];
         }
 
         public String asString(Charset charset) {
