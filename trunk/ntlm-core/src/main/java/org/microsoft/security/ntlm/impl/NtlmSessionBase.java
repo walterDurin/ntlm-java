@@ -21,8 +21,6 @@ import static org.microsoft.security.ntlm.impl.Algorithms.createRC4;
 import static org.microsoft.security.ntlm.impl.Algorithms.intToBytes;
 import static org.microsoft.security.ntlm.impl.Algorithms.msTimestamp;
 import static org.microsoft.security.ntlm.impl.Algorithms.nonce;
-import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_128;
-import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_56;
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY;
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_KEY_EXCH;
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_LM_KEY;
@@ -30,13 +28,21 @@ import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_OE
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_UNICODE;
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_NEGOTIATE_VERSION;
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.NTLMSSP_REQUEST_TARGET_FLAG;
-import static org.microsoft.security.ntlm.impl.NtlmRoutines.SignkeyMode;
+import static org.microsoft.security.ntlm.impl.NtlmRoutines.KeyMode;
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.mac;
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.reinitSealingKey;
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.sealkey;
 import static org.microsoft.security.ntlm.impl.NtlmRoutines.signkey;
 
 /**
+ *
+ * See useful information on keys calculation here:
+ * http://blogs.msdn.com/b/openspecification/archive/2010/04/20/ntlm-keys-and-sundry-stuff.aspx
+ *
+ * Explanation on some key calculation issues:
+ * http://social.msdn.microsoft.com/Forums/en-US/os_windowsprotocols/thread/c1db6e46-ed1a-4403-a836-04a4cee3c0c1
+ *
+ * 
  *
  * @author <a href="http://profiles.google.com/109977706462274286343">Veritatem Quaeres</a>
  * @version $Revision: $
@@ -198,26 +204,12 @@ Endif
             time = new Algorithms.ByteArray(msTimestamp());
         }
 
-        byte[] randomForSessionKey = NTLMSSP_NEGOTIATE_KEY_EXCH.isSet(negotiateFlags) ? nonce(16) : null;
-        byte[] randomForSealKey;
-        if (NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY.isSet(negotiateFlags)) {
-            if (NTLMSSP_NEGOTIATE_128.isSet(negotiateFlags)) {
-                randomForSealKey = null;
-            } else if (NTLMSSP_NEGOTIATE_56.isSet(negotiateFlags)) {
-                randomForSealKey = nonce(7);
-            } else {
-                randomForSealKey = nonce(5);
-            }
-        } else {
-            randomForSealKey = new byte[8];
-            nonce(randomForSealKey, 0, NTLMSSP_NEGOTIATE_56.isSet(negotiateFlags) ? 7 : 5);
-        }
-
-        processChallengeMessage(challengeMessage, nonce(8), time, randomForSessionKey, randomForSealKey);
+        byte[] randomSessionKey = nonce(16);
+        processChallengeMessage(challengeMessage, nonce(8), time, randomSessionKey);
     }
 
     void processChallengeMessage(NtlmChallengeMessage challengeMessage, byte[] clientChallenge, ByteArray time
-            , byte[] randomForSessionKey, byte[] randomForSealKey)
+            , byte[] randomSessionKey)
     {
         negotiateFlags = challengeMessage.getNegotiateFlags();
 /*
@@ -243,7 +235,7 @@ Endif
 
         serverChallenge = challengeMessage.getServerChallenge();
         calculateNTLMResponse(time, clientChallenge, challengeMessage.getTargetInfo());
-        calculateKeys(randomForSessionKey, randomForSealKey);
+        calculateKeys(randomSessionKey);
 
         /*
 2.2.1.3 AUTHENTICATE_MESSAGE
@@ -302,6 +294,8 @@ Set AUTHENTICATE_MESSAGE.MIC to MIC
 
 
     /*
+3.1.5.1.2
+    
 Set KeyExchangeKey to KXKEY(SessionBaseKey, LmChallengeResponse, CHALLENGE_MESSAGE.ServerChallenge)
 If (NTLMSSP_NEGOTIATE_KEY_EXCH bit is set in CHALLENGE_MESSAGE.NegotiateFlags )
     Set ExportedSessionKey to NONCE(16)
@@ -323,31 +317,22 @@ RC4Init(ServerHandle, ServerSealingKey)
      */
 
     /**
-     * @param randomForSessionKey if NTLMSSP_NEGOTIATE_KEY_EXCH then nonce(16)
-     * @param randomForSealKey  if (NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY)
-     *                              if (NTLMSSP_NEGOTIATE_128) not needed
-     *                              elseif (NTLMSSP_NEGOTIATE_56) nonce(7)
-     *                              else nonce(5)
-     *                          elseif
-     *                              nonce(8)
-     *                              if (NTLMSSP_NEGOTIATE_56) 7 bytes needed
-     *                              else 5 bytes needed
-     *                          endif
+     * @param randomSessionKey if NTLMSSP_NEGOTIATE_KEY_EXCH then nonce(16)
      */
-    private void calculateKeys(byte[] randomForSessionKey, byte[] randomForSealKey) {
+    private void calculateKeys(byte[] randomSessionKey) {
         byte[] keyExchangeKey = kxkey();
+        assert randomSessionKey != null && randomSessionKey.length == 16;
         if (NTLMSSP_NEGOTIATE_KEY_EXCH.isSet(negotiateFlags)) {
-            assert randomForSessionKey.length == 16;
-            exportedSessionKey = randomForSessionKey;
+            exportedSessionKey = randomSessionKey;
             encryptedRandomSessionKey = calculateRC4K(keyExchangeKey, exportedSessionKey);
         } else {
             exportedSessionKey = keyExchangeKey;
             encryptedRandomSessionKey = null;
         }
-        clientSigningKey = signkey(negotiateFlags, SignkeyMode.client, exportedSessionKey);
-        serverSigningKey = signkey(negotiateFlags, SignkeyMode.server, exportedSessionKey);
-        clientSealingKey = sealkey(negotiateFlags, SignkeyMode.client, exportedSessionKey, randomForSealKey);
-        serverSealingKey = sealkey(negotiateFlags, SignkeyMode.server, exportedSessionKey, randomForSealKey);
+        clientSigningKey = signkey(negotiateFlags, KeyMode.client, randomSessionKey);
+        serverSigningKey = signkey(negotiateFlags, KeyMode.server, randomSessionKey);
+        clientSealingKey = sealkey(negotiateFlags, KeyMode.client, randomSessionKey);
+        serverSealingKey = sealkey(negotiateFlags, KeyMode.server, randomSessionKey);
 
 
         if (connectionType == NtlmAuthenticator.ConnectionType.connectionOriented) {

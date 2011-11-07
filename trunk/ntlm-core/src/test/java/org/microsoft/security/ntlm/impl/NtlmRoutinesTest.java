@@ -6,16 +6,19 @@ package org.microsoft.security.ntlm.impl;
 import org.junit.Assert;
 import org.junit.Test;
 import org.microsoft.security.ntlm.NtlmAuthenticator;
+import org.microsoft.security.ntlm.NtlmSession;
 import org.microsoft.security.ntlm.PrivilegedAccessor;
 
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
 
 import static org.microsoft.security.ntlm.impl.Algorithms.EMPTY_ARRAY;
 import static org.microsoft.security.ntlm.impl.Algorithms.bytesTo4;
+import static org.microsoft.security.ntlm.impl.Algorithms.bytesToString;
 import static org.microsoft.security.ntlm.impl.Algorithms.calculateCRC32;
 import static org.microsoft.security.ntlm.impl.Algorithms.compareArray;
 import static org.microsoft.security.ntlm.impl.Algorithms.createHmacMD5;
@@ -103,7 +106,7 @@ public class NtlmRoutinesTest {
         assertSame(expectedNTLMv1Response, ntlmV1Session.ntChallengeResponse);
 
 
-        // todo [!] Spec error according to 3.1.1.1 this value must be true, but test expects true
+        // todo [!] Spec error according to 3.1.1.1 NoLMResponseNTLMv1 must be true, but test expects true
         // 4.2.2.2.2 LMv1 Response
         {
             // NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY not set
@@ -133,13 +136,9 @@ public class NtlmRoutinesTest {
         // 4.2.2.2.3 Encrypted Session Key
         {
             byte[] randomForSessionKey = RANDOM_SESSION_KEY;
-            byte[] randomForSealKey = new byte[8];
             // RC4 encryption of the RandomSessionKey with the KeyExchangeKey:
-            PrivilegedAccessor.callMethod(ntlmV1Session, "calculateKeys",
-                    new Class[]{byte[].class, byte[].class},
-                    new Object[]{randomForSessionKey, randomForSealKey}
-            );
-            byte[] encryptedRandomSessionKey = (byte[]) PrivilegedAccessor.getValue(ntlmV1Session, "encryptedRandomSessionKey");
+            calculateKeys(ntlmV1Session, randomForSessionKey);
+            byte[] encryptedRandomSessionKey = getEncryptedRandomSessionKey(ntlmV1Session);
             byte[] expectedEncryptedSessionKey = block2bytes(
                     "0000000: 51 88 22 b1 b3 f3 50 c8 95 86 82 ec bb 3e 3c b7 Q.....P........."
             );
@@ -151,12 +150,8 @@ public class NtlmRoutinesTest {
             int negotiateFlags0 = negotiateFlags | NtlmRoutines.NTLMSSP_REQUEST_NON_NT_SESSION_KEY.getFlag();
             ntlmV1Session.negotiateFlags = negotiateFlags0;
             byte[] randomForSessionKey = RANDOM_SESSION_KEY;
-            byte[] randomForSealKey = new byte[8];
-            PrivilegedAccessor.callMethod(ntlmV1Session, "calculateKeys",
-                    new Class[]{byte[].class, byte[].class},
-                    new Object[]{randomForSessionKey, randomForSealKey}
-            );
-            byte[] encryptedRandomSessionKey = (byte[]) PrivilegedAccessor.getValue(ntlmV1Session, "encryptedRandomSessionKey");
+            calculateKeys(ntlmV1Session, randomForSessionKey);
+            byte[] encryptedRandomSessionKey = getEncryptedRandomSessionKey(ntlmV1Session);
             byte[] expectedEncryptedSessionKey = block2bytes(
                     "0000000: 74 52 ca 55 c2 25 a1 ca 04 b4 8f ae 32 cf 56 fc tR.U........2.V."
             );
@@ -168,12 +163,8 @@ public class NtlmRoutinesTest {
             int negotiateFlags0 = negotiateFlags | NtlmRoutines.NTLMSSP_NEGOTIATE_LM_KEY.getFlag();
             ntlmV1Session.negotiateFlags = negotiateFlags0;
             byte[] randomForSessionKey = RANDOM_SESSION_KEY;
-            byte[] randomForSealKey = new byte[8];
-            PrivilegedAccessor.callMethod(ntlmV1Session, "calculateKeys",
-                    new Class[]{byte[].class, byte[].class},
-                    new Object[]{randomForSessionKey, randomForSealKey}
-            );
-            byte[] encryptedRandomSessionKey = (byte[]) PrivilegedAccessor.getValue(ntlmV1Session, "encryptedRandomSessionKey");
+            calculateKeys(ntlmV1Session, randomForSessionKey);
+            byte[] encryptedRandomSessionKey = getEncryptedRandomSessionKey(ntlmV1Session);
             byte[] expectedEncryptedSessionKey = block2bytes(
                     "0000000: 4c d7 bb 57 d6 97 ef 9b 54 9f 02 b8 f9 b3 78 64 L..W....T.....xd"
             );
@@ -192,7 +183,14 @@ public class NtlmRoutinesTest {
         // reverse negotiate flags
         ntlmV1Session.negotiateFlags = negotiateFlags;
         NtlmChallengeMessage challengeMessage = new NtlmChallengeMessage(challengeMessageData);
-        ntlmV1Session.processChallengeMessage(challengeMessage, CLIENT_CHALLENGE, new Algorithms.ByteArray(TIME), RANDOM_SESSION_KEY, new byte[8]);
+        ntlmV1Session.processChallengeMessage(challengeMessage, CLIENT_CHALLENGE, new Algorithms.ByteArray(TIME), RANDOM_SESSION_KEY);
+
+/*
+        // todo [!] hotfix for spec error
+        ntlmV1Session.negotiateFlags |= NtlmRoutines.NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY.getFlag();
+        calculateKeys(ntlmV1Session, RANDOM_SESSION_KEY);
+*/
+
         byte[] authenticateMessage = ntlmV1Session.generateAuthenticateMessage();
 
         // The AUTHENTICATE_MESSAGE (section 2.2.1.3):
@@ -215,32 +213,21 @@ public class NtlmRoutinesTest {
 
 
         // 4.2.2.4 GSS_WrapEx Examples
+        // SeqNum for the message:
         byte[] seqNum = block2bytes(
                 "0000000: 00 00 00 00                                     ...."
         );
 
+        // NONCE(4):
         byte[] nonce_4 = block2bytes(
                 "0000000: 00 00 00 00                                     ...."
         );
 
+        // Plaintext data where conf_req_flag == TRUE and sign == TRUE:
         byte[] plaintext = "Plaintext".getBytes(Algorithms.UNICODE_ENCODING);
 
-        PrivilegedAccessor.setValue(ntlmV1Session, "connectionType", NtlmAuthenticator.ConnectionType.connectionless);
-        ntlmV1Session.updateSequenceNumber(0);
-        Cipher sealingKey = (Cipher) PrivilegedAccessor.getValue(ntlmV1Session, "clientSealingKeyCipher");
-        byte[] randomPadIn = Algorithms.EMPTY_ARRAY;
-        byte[] message = plaintext;
-        byte[] seqNumInArray = seqNum;
-
-        byte[] checksum = calculateCRC32(message);
-        byte[] randomPad = sealingKey.doFinal(randomPadIn);
-        byte[] checksum2 = sealingKey.doFinal(checksum);
-        byte[] seqNum1 = sealingKey.doFinal(EMPTY_ARRAY);
-//        byte[] seqNumInArray = intToBytes(seqNumIn);
-        byte[] seqNum2 = new byte[4];
-        for (int i = 0; i < seqNumInArray.length; i++) {
-            seqNum2[i] = (byte) (seqNum1[i] ^ seqNumInArray[i]);
-        }
+//        PrivilegedAccessor.setValue(ntlmV1Session, "connectionType", NtlmAuthenticator.ConnectionType.connectionless);
+//        ntlmV1Session.updateSequenceNumber(0);
 
         // Data:
         byte[] expectedSealedData = block2bytes(
@@ -248,14 +235,39 @@ public class NtlmRoutinesTest {
                 "0000010: 7f b8                                           .."
         );
         byte[] sealedData = ntlmV1Session.seal(plaintext);
-        // todo [!] Invalid value receive
-//        assertSame(expectedSealedData, sealedData);
+        byte[] encryptedRandomSessionKey = getEncryptedRandomSessionKey(ntlmV1Session);
+//        byte[] clientSigningKey = (byte[]) PrivilegedAccessor.getValue(ntlmV1Session, "clientSigningKey");
+        byte[] clientSealingKey = getClientSealingKey(ntlmV1Session);
+        log.severe("encryptedRandomSessionKey: " + bytesToString(encryptedRandomSessionKey)
+//                + ", clientSigningKey: " + bytesToString(clientSigningKey)
+                + ", clientSealingKey: " + bytesToString(clientSealingKey)
+                + ", plaintext: " + bytesToString(plaintext)
+        );
+
+        // todo [!] Invalid value receive. Fixed by NtlmRoutines.sealkey() change
+        assertSame(expectedSealedData, sealedData);
 
         // Checksum: CRC32(Message):
         byte[] expectedCRC32 = block2bytes(
                 "0000000: 7d 84 aa 93                                     }..."
         );
+        byte[] message = plaintext;
+        byte[] checksum = calculateCRC32(message);
         assertSame(expectedCRC32, checksum);
+
+
+        Cipher sealingKey = getClientSealingKeyCipher(ntlmV1Session);
+        byte[] randomPadIn = Algorithms.EMPTY_ARRAY;
+        byte[] seqNumInArray = seqNum;
+//        byte[] randomPad = sealingKey.doFinal(randomPadIn); //todo [!] check
+        byte[] randomPad = sealingKey.doFinal(nonce_4);
+        byte[] checksum2 = sealingKey.doFinal(checksum);
+        byte[] seqNum1 = sealingKey.doFinal(EMPTY_ARRAY);
+//        byte[] seqNumInArray = intToBytes(seqNumIn);
+        byte[] seqNum2 = new byte[4];
+        for (int i = 0; i < seqNumInArray.length; i++) {
+            seqNum2[i] = (byte) (seqNum1[i] ^ seqNumInArray[i]);
+        }
 
         // RandomPad: RC4(Handle, RandomPad):
         byte[] expectedRandomPad = block2bytes(
@@ -345,6 +357,7 @@ public class NtlmRoutinesTest {
         assertSame(expectedLMv2Response, ntlmV2Session.lmChallengeResponse);
 
 
+        // 4.2.4.2.2 NTLMv2 Response
         // todo [!spec error} : NOTE: expected NtChallengeResponse is too short
         // According to 3.3.2 NTLM v2 Authentication
         // Set NtChallengeResponse to ConcatenationOf(NTProofStr, temp)
@@ -357,11 +370,8 @@ public class NtlmRoutinesTest {
         // 4.2.4.2.3 Encrypted Session Key
         {
             // RC4 encryption of the RandomSessionKey with the KeyExchangeKey:
-            PrivilegedAccessor.callMethod(ntlmV2Session, "calculateKeys",
-                    new Class[]{byte[].class, byte[].class},
-                    new Object[]{RANDOM_SESSION_KEY, new byte[8]}
-            );
-            byte[] encryptedRandomSessionKey = (byte[]) PrivilegedAccessor.getValue(ntlmV2Session, "encryptedRandomSessionKey");
+            calculateKeys(ntlmV2Session, RANDOM_SESSION_KEY);
+            byte[] encryptedRandomSessionKey = getEncryptedRandomSessionKey(ntlmV2Session);
             byte[] expectedEncryptedSessionKey = block2bytes(
                     "0000000: c5 da d2 54 4f c9 79 90 94 ce 1c e9 0b c9 d0 3e ...TO.y........<"
             );
@@ -388,7 +398,7 @@ public class NtlmRoutinesTest {
         }
 
         ntlmV2Session.generateNegotiateMessage();
-        ntlmV2Session.processChallengeMessage(challengeMessage, CLIENT_CHALLENGE, time, RANDOM_SESSION_KEY, null);
+        ntlmV2Session.processChallengeMessage(challengeMessage, CLIENT_CHALLENGE, time, RANDOM_SESSION_KEY);
         byte[] authenticateMessage = ntlmV2Session.generateAuthenticateMessage();
         // The AUTHENTICATE_MESSAGE (section 2.2.1.3):
         byte[] expectedAuthenticateMessage = block2bytes(
@@ -423,7 +433,7 @@ public class NtlmRoutinesTest {
         byte[] expectedClientSealingKey = block2bytes(
                 "0000000: 59 f6 00 97 3c c4 96 0a 25 48 0a 7c 19 6e 4c 58 Y...<-..%H...nLX"
         );
-        byte[] clientSealingKey = (byte[]) PrivilegedAccessor.getValue(ntlmV2Session, "clientSealingKey");
+        byte[] clientSealingKey = getClientSealingKey(ntlmV2Session);
         assertSame(expectedClientSealingKey, clientSealingKey);
 
 
@@ -432,7 +442,7 @@ public class NtlmRoutinesTest {
         byte[] expectedClientSigningKey = block2bytes(
                 "0000000: 47 88 dc 86 1b 47 82 f3 5d 43 fd 98 fe 1a 2d 39 G....G..]C....-9"
         );
-        byte[] clientSigningKey = (byte[]) PrivilegedAccessor.getValue(ntlmV2Session, "clientSigningKey");
+        byte[] clientSigningKey = getClientSealingKey(ntlmV2Session);
         assertSame(expectedClientSigningKey, clientSigningKey);
 
         // The output message data and signature is created using SEAL() specified in section 3.4.3. Output_message will contain conf_state == TRUE, signed == TRUE and data:
@@ -453,21 +463,21 @@ public class NtlmRoutinesTest {
 //            Didn't help
 //            PrivilegedAccessor.setValue(ntlmV2Session, "connectionType", NtlmAuthenticator.ConnectionType.connectionless);
 //            ntlmV2Session.updateSequenceNumber(0);
-            Cipher sealingKey = (Cipher) PrivilegedAccessor.getValue(ntlmV2Session, "clientSealingKeyCipher");
 
             Mac hmacMD5 = createHmacMD5(signingKey);
             hmacMD5.update(seqNum);
             hmacMD5.update(message);
             byte[] md5Result = hmacMD5.doFinal();
-            byte[] rc4 = sealingKey.doFinal(md5Result, 0, 8);
 
             // Checksum: HMAC_MD5(SigningKey, ConcatenationOf(SeqNum, Message))[0..7]:
             byte[] expectedHMAC_MD5 = block2bytes(
                     "0000000: 70 35 28 51 f2 56 43 09                         p5(Q.VC."
             );
             assertSame(expectedHMAC_MD5, new Algorithms.ByteArray(md5Result, 0, 8));
-            if (true) return;
 
+            Cipher sealingKey = getClientSealingKeyCipher(ntlmV2Session);
+//            Cipher sealingKey = createRC4(clientSealingKey);
+            byte[] rc4 = sealingKey.doFinal(md5Result, 0, 8);
             // Checksum: RC4(Checksum above):
             byte[] expectedRC4 = block2bytes(
                     "0000000: 7f b3 8e c5 c5 5d 49 76                         .....]Iv"
@@ -487,6 +497,11 @@ public class NtlmRoutinesTest {
     }
 
 
+    /**
+     * Test used for debug purposes
+     *
+     * @throws Exception any error
+     */
     @Test
     public void testChallenge() throws Exception {
         // 4.2.4.3 Messages
@@ -525,11 +540,10 @@ public class NtlmRoutinesTest {
         byte[] ntowfv2 = NtlmV2Session.calculateNTOWFv2(DOMAIN_NAME, USER_NAME, PASSWORD);
         NtlmV2Session ntlmV2Session = new NtlmV2Session(NtlmAuthenticator.ConnectionType.connectionOriented
 //                , ntowfv2, NtlmAuthenticator.WindowsVersion.WindowsXp, SERVER_NAME, DOMAIN_NAME, USER_NAME);
-                // todo [!spec error} : NOTE: instead of SERVER_NAME "COMPUTER" must be used
-                , ntowfv2, NtlmAuthenticator.WindowsVersion.WindowsXp, "COMPUTER", DOMAIN_NAME, USER_NAME);
+                , ntowfv2, NtlmAuthenticator.WindowsVersion.WindowsXp, WORKSTATION_NAME, DOMAIN_NAME, USER_NAME);
         ntlmV2Session.generateNegotiateMessage();
 
-        ntlmV2Session.processChallengeMessage(challengeMessage, CLIENT_CHALLENGE, time, RANDOM_SESSION_KEY, null);
+        ntlmV2Session.processChallengeMessage(challengeMessage, CLIENT_CHALLENGE, time, RANDOM_SESSION_KEY);
         byte[] authenticateMessage = ntlmV2Session.generateAuthenticateMessage();
         // The AUTHENTICATE_MESSAGE (section 2.2.1.3):
         byte[] expectedAuthenticateMessage = block2bytes(
@@ -668,6 +682,25 @@ public class NtlmRoutinesTest {
 
     private static void assertSame(byte[] expected, Algorithms.ByteArray real) {
         Assert.assertEquals(Algorithms.bytesToString(expected), Algorithms.bytesToString(real));
+    }
+
+    private byte[] getClientSealingKey(NtlmSession ntlmV1Session) throws IllegalAccessException, NoSuchFieldException {
+        return (byte[]) PrivilegedAccessor.getValue(ntlmV1Session, "clientSealingKey");
+    }
+
+    private Cipher getClientSealingKeyCipher(NtlmSession ntlmV1Session) throws IllegalAccessException, NoSuchFieldException {
+        return (Cipher) PrivilegedAccessor.getValue(ntlmV1Session, "clientSealingKeyCipher");
+    }
+
+    private byte[] getEncryptedRandomSessionKey(NtlmSession ntlmV1Session) throws IllegalAccessException, NoSuchFieldException {
+        return (byte[]) PrivilegedAccessor.getValue(ntlmV1Session, "encryptedRandomSessionKey");
+    }
+
+    private void calculateKeys(NtlmSession ntlmSession, byte[] randomSessionKey) throws NoSuchMethodException, IllegalAccessException, InvocationTargetException {
+        PrivilegedAccessor.callMethod(ntlmSession, "calculateKeys",
+                new Class[]{byte[].class},
+                new Object[]{randomSessionKey}
+        );
     }
 
 
