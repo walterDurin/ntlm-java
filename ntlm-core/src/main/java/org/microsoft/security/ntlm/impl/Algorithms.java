@@ -465,6 +465,7 @@ Note K[] implies a key represented as a character array.
         public ByteArray(byte[] data, int offset, int length) {
             this.data = data;
             this.offset = offset;
+            // todo [!] check this
             this.length = Math.min(length, data.length - offset);
         }
 
@@ -478,6 +479,13 @@ Note K[] implies a key represented as a character array.
 
         public int getLength() {
             return length;
+        }
+
+        public byte[] asByteArray() {
+            if (offset == 0 && length == data.length) return data;
+            byte[] byteArray = new byte[length];
+            copyTo(byteArray, 0);
+            return byteArray;
         }
 
         public int copyTo(byte[] dstData, int dstOffset) {

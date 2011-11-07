@@ -537,7 +537,7 @@ EndDefine
      * @param randomSessionKey
      * @return
      */
-    public static byte[] signkey(int negotiateFlags, SignkeyMode mode, byte[] randomSessionKey) {
+    public static byte[] signkey(int negotiateFlags, KeyMode mode, byte[] randomSessionKey) {
         if (NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY.isSet(negotiateFlags)) {
             byte[] signKey = calculateMD5(concat(randomSessionKey, mode.signingMagicString));
             return signKey;
@@ -589,25 +589,28 @@ Endif
 EndDefine
 
      */
-    public static byte[] sealkey(int negotiateFlags, SignkeyMode mode, byte[] randomSessionKey, byte[] randomForSealKey) {
+    public static byte[] sealkey(int negotiateFlags, KeyMode mode, byte[] randomSessionKey) {
         byte[] sealKey;
         if (NTLMSSP_NEGOTIATE_EXTENDED_SESSIONSECURITY.isSet(negotiateFlags)) {
             if (NTLMSSP_NEGOTIATE_128.isSet(negotiateFlags)) {
                 sealKey = randomSessionKey;
             } else if (NTLMSSP_NEGOTIATE_56.isSet(negotiateFlags)) {
-                assert randomForSealKey.length == 7;
-                sealKey = randomForSealKey;
+                sealKey = new ByteArray(randomSessionKey, 0, 7).asByteArray();
             } else {
-                assert randomForSealKey.length == 5;
-                sealKey = randomForSealKey;
+                sealKey = new ByteArray(randomSessionKey, 0, 5).asByteArray();
             }
             sealKey = calculateMD5(concat(sealKey, mode.sealingMagicString));
         } else {
-            assert randomForSealKey.length == 8;
-            sealKey = randomForSealKey;
+            sealKey = new byte[8];
             if (NTLMSSP_NEGOTIATE_56.isSet(negotiateFlags)) {
+                // todo [!] seems to be either spec error or examples error - see http://social.msdn.microsoft.com/Forums/en-US/os_windowsprotocols/thread/a6d0241f-b608-4863-bff0-7cb0bb4f27e2/
+/*
+                System.arraycopy(randomSessionKey, 0, sealKey, 0, 7);
                 sealKey[7] = (byte) 0xA0;
+*/
+                sealKey = randomSessionKey;
             } else {
+                System.arraycopy(randomSessionKey, 0, sealKey, 0, 5);
                 sealKey[5] = (byte) 0xE5;
                 sealKey[6] = (byte) 0x38;
                 sealKey[7] = (byte) 0xB0;
@@ -823,14 +826,14 @@ Endif
 EndDefine
 
      */
-    public enum SignkeyMode {
+    public enum KeyMode {
         client("session key to client-to-server signing key magic constant\0", "session key to client-to-server sealing key magic constant\0"),
         server("session key to server-to-client signing key magic constant\0", "session key to server-to-client sealing key magic constant\0");
 
         final ByteArray signingMagicString;
         final ByteArray sealingMagicString;
 
-        SignkeyMode(String signingMagicString, String sealingMagicString) {
+        KeyMode(String signingMagicString, String sealingMagicString) {
             this.signingMagicString = new ByteArray(signingMagicString.getBytes(ASCII_ENCODING));
             this.sealingMagicString = new ByteArray(sealingMagicString.getBytes(ASCII_ENCODING));
         }
