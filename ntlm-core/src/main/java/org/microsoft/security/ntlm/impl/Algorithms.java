@@ -293,6 +293,16 @@ public class Algorithms {
         return hmacMD5.doFinal();
     }
 
+    /**
+     * HMAC_MD5(K, M)
+
+     * Indicates the computation of a 16-byte HMAC-keyed MD5
+     * message digest of the byte string M using the key K.
+     *
+     * @param key K
+     * @param data M
+     * @return 16-byte digest
+     */
     public static byte[] calculateHmacMD5(byte[] key, byte[] data) {
         Mac hmacMD5 = createHmacMD5(key);
         hmacMD5.update(data);

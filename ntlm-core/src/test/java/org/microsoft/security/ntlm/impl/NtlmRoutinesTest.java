@@ -359,12 +359,14 @@ public class NtlmRoutinesTest {
 
         // 4.2.4.2.2 NTLMv2 Response
         // todo [!spec error} : NOTE: expected NtChallengeResponse is too short
+        // According to new spec version this value corresponds to 2.2.2.8, Response (16 bytes)
         // According to 3.3.2 NTLM v2 Authentication
         // Set NtChallengeResponse to ConcatenationOf(NTProofStr, temp)
+        // So we must use only NTProofStr, which is first 16 bytes of ntChallengeResponse
         byte[] expectedNTLMv2Response = block2bytes(
                 "0000000: 68 cd 0a b8 51 e5 1c 96 aa bc 92 7b eb ef 6a 1c h...Q......{..j."
         );
-//        assertSame(expectedNTLMv2Response, ntlmV2Session.ntChallengeResponse);
+        assertSame(expectedNTLMv2Response, new Algorithms.ByteArray(ntlmV2Session.ntChallengeResponse, 0, 16));
 
 
         // 4.2.4.2.3 Encrypted Session Key
